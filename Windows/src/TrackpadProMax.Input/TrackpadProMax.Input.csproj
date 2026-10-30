@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../TrackpadProMax.Core/TrackpadProMax.Core.csproj" /></ItemGroup></Project>

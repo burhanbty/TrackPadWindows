@@ -1,0 +1,15 @@
+TrackpadProMax
+Copyright 2026 Serhan Ensar
+
+This product includes software developed by Serhan Ensar
+(https://github.com/SerhanEnsar/TrackpadProMax).
+
+MultitouchSupport.framework and its data layouts belong to Apple Inc.
+TrackpadProMax only loads the framework at runtime and ships none of Apple's code.
+
+Windows adaptation: TrackpadProMax for Windows, 2026.
+The Windows implementation adapts session recognition, zone classification,
+profile precedence and radial-menu/tiling concepts. It replaces all macOS
+framework integrations with .NET/WPF and Windows APIs. No Apple framework or
+data layout is shipped by the Windows application.
+Upstream reference commit: 73a322138b8cfaa09c1d3fe63c44774458917844.
