@@ -1,5 +1,12 @@
 # Hardware diagnostics
 
+Phase 2 recheck (2026-11-01): MSI Katana 17 B13VGK / Windows build 26300;
+diagnostic CLI exited 0 with no collector errors. Native pointer registration and
+TouchpadGesturesController IsSupported/create/enable succeeded. Physical frames
+were not received during automated inspection; guided tests remain pending.
+Use the dedicated Touchpad Laboratory for contact evidence and combined local
+export. See [PHASE2_REPORT](PHASE2_REPORT.md).
+
 The collector uses read-only WMI queries, RtlGetVersion, Raw Input inventory,
 DLL export lookup and WinRT metadata. It does not open exclusive HID collections,
 change registry values or send device commands. No report leaves the computer.

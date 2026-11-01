@@ -15,7 +15,7 @@ public partial class App : Application
             return;
         }
         instance=new System.Threading.Mutex(true,"Local\\TrackpadProMax.Windows",out bool created);
-        if(!created) { MessageBox.Show("TrackpadProMax zaten çalışıyor. Sistem tepsisinden açabilirsiniz."); Shutdown();return; }
+        if(!created) { if(e.Args.Contains("--smoke")){Shutdown(2);return;}MessageBox.Show("TrackpadProMax zaten çalışıyor. Sistem tepsisinden açabilirsiniz."); Shutdown();return; }
         DispatcherUnhandledException+=(sender,args)=>
         {
             if(e.Args.Contains("--smoke"))

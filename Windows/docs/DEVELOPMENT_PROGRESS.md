@@ -1,5 +1,12 @@
 # Development progress and engineering report
 
+## Phase 2 — 2026-11-01
+
+Delivered and validated in [PHASE2_REPORT](PHASE2_REPORT.md): shared glass UI,
+foreground gesture controller, honest physical laboratory, setup wizard,
+binding/menu editors, 65 passing tests and staged/backup-protected win-x64 release.
+Physical event delivery remains pending. The original Phase 1 record follows.
+
 Session date: 2026-10-30 (Europe/Istanbul).
 
 ## Scope delivered

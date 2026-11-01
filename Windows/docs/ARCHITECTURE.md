@@ -1,5 +1,13 @@
 # Architecture and upstream portability review
 
+Phase 2 update (2026-11-01): see [PHASE2_REPORT](PHASE2_REPORT.md). Shared glass
+resources, laboratory evidence models and explicit input routes extend this
+architecture. Runtime-gated TouchpadGesturesController callbacks feed the same
+native pointer frame reader; global tap events carry a count but no coordinates.
+Automatic bindings select shortcut when present, otherwise native. Native-only
+bindings do not register their dormant shortcut. Laboratory/setup observation
+suppresses action dispatch. Appearance is additive to the version-1 settings schema.
+
 ## Source separation and attribution
 
 Original repository: https://github.com/SerhanEnsar/TrackpadProMax

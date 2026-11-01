@@ -1,10 +1,17 @@
-# TrackpadProMax for Windows — functional MVP
+# TrackpadProMax for Windows — Phase 2
 
 A .NET 10 WPF desktop utility inspired by Serhan Ensar's
 [TrackpadProMax](https://github.com/SerhanEnsar/TrackpadProMax). Turkish interface,
 local configuration, no telemetry, no kernel driver and no automatic startup.
 This is an independent Windows adaptation, not a claim of full macOS parity.
 Apache-2.0 license and upstream attribution are retained in LICENSE and NOTICE.
+
+Phase 2 adds Liquid Glass styling with real DWM Acrylic requests and opaque
+fallbacks, persistent appearance, Touchpad Laboratory, Turkish shortcut setup,
+a runtime-gated foreground three/four-finger controller, a binding form and a
+visual nested-menu editor. **65 automated tests pass.** API/controller activation
+was verified locally; physical event delivery remains pending. See
+[Phase 2 evidence and test steps](docs/PHASE2_REPORT.md).
 
 ## Run
 
@@ -34,6 +41,10 @@ archive was verified against the official SHA512. The SDK is not committed.
 ```powershell
 .\Windows\build.ps1 -Test -Publish
 ```
+
+Exit the app through Settings → Uygulamadan çık before publishing. The script
+smoke-tests staging first, retains the previous complete folder under
+`artifacts/backups/`, then promotes the new release.
 
 On systems with .NET 10 installed, the equivalent standard commands are:
 
@@ -66,7 +77,7 @@ The app never changes Windows gesture settings automatically.
 
 | Area | Implemented behavior | Validation scope |
 |---|---|---|
-| Dashboard/settings | Seven pages, dark UI, validation, local save, reset, tray | Startup/page smoke; visual inspection |
+| Dashboard/settings | Nine pages, glass controls, appearance, validation, local save, reset, tray | Nine-page smoke; local visual inspection |
 | Radial wheel | Configurable entries, nested menus, modes, keyboard/mouse, animation | Opened using global chord; nested navigation via programmatic smoke |
 | Hotkeys | RegisterHotKey, MOD_NOREPEAT, unregister/reconfigure, conflict reporting | Default chords registered locally; F8 wheel chord exercised |
 | Launcher | Add local EXE or HTTP(S) URL, JSON remove/reorder, shortcut bindings | EXE launch verified on test fixture; URL opening not exercised |
@@ -76,11 +87,11 @@ The app never changes Windows gesture settings automatically.
 | Profiles | Foreground process matching, profile-first fallback, per-mode mappings | Automated core tests |
 | Gesture engine | 1–4-finger tap/double/hold/swipes, zones, cancellation, thresholds | Deterministic synthetic tests, not physical finger tests |
 | Diagnostics | OS/model, PnP/HID/Raw Input inventory, API probes, local JSON export | Ran successfully on this MSI computer |
-| Native touchpad input | Opt-in foreground manipulation frames using runtime-loaded APIs | Registration checked; physical event stream untested |
+| Native touchpad input | Opt-in foreground frames + runtime-gated three/four-finger controller | Registration/controller activation checked; physical delivery pending |
 | Pressure/haptics/surfaces | Explicitly unavailable in this release | No fabricated values or substituted cursor coordinates |
 
-Profiles and menus have working editors; menu/nested structure and advanced
-sensitivity settings currently use validated JSON rather than visual designers.
+Profiles, bindings and nested menus have working editors; advanced sensitivity
+settings use validated JSON. Menu JSON remains an optional advanced route.
 Action kinds/values are documented inside the Actions page. `launch` accepts
 EXE names/paths without arguments; `url` accepts HTTP(S) only. Configuration
 is stored at `%LOCALAPPDATA%\TrackpadProMax\settings.json`, with a `.bak` of the
@@ -99,10 +110,12 @@ registering any hotkeys/tray icon:
 `--diagnostics` must be followed by exactly one path argument. Reports contain
 PnP identifiers; review them before sharing. Collection stays local.
 
-The Gestures page's laboratory feeds synthetic normalized device contacts into
-the engine. It reports recognized events and **does not execute actions**.
-Pressure is nullable and is never synthesized. `--smoke` initializes all pages,
-checks nested wheel navigation and native registration, then exits. It writes
+Touchpad Laboratory separates native, shortcut and simulated input, with bounded
+logs and guided tests. Its simulation feeds normalized contacts into the engine
+and **does not execute actions**. Physical tests stay pending until matching native
+input arrives. Shortcut setup requires separate user confirmation of physical
+performance. Pressure is nullable and never synthesized. `--smoke` initializes all
+nine pages, checks nested navigation and native/controller activation, then exits. It writes
 `smoke/ui-smoke.json` next to the executable; it does not prove physical input.
 
 See [ARCHITECTURE](docs/ARCHITECTURE.md), [COMPATIBILITY](docs/COMPATIBILITY.md),

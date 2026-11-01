@@ -10,7 +10,7 @@ features, so export/metadata discovery and successful event delivery are separat
 | RegisterTouchpadCapableWindow | Dynamically resolved, explicit opt-in, return value checked | Not assumed from OS build or documentation alone |
 | GetPointerTouchpadInfo | Export probed | Single-pointer variant evaluated; frame variant used for acquisition |
 | GetPointerFrameTouchpadInfo | Dynamically resolved; bounded 16-contact buffer | Device-relative HIMETRIC contacts; cancellation and frame deduplication |
-| TouchpadGesturesController | Runtime metadata probe | Foreground-process gesture controller; not integrated in MVP |
+| TouchpadGesturesController | Phase 2 adapter; IsSupported/create/enable verified | Foreground three/four-finger taps and manipulation; physical delivery pending |
 | PhysicalGestureRecognizer | Runtime metadata probe | Native gesture recognizer evaluated; portable C# recognizer used instead |
 | HID / Raw Input | Device inventory via GetRawInputDeviceList/GetRawInputDeviceInfo | No exclusive PTP collection opened; no unrestricted raw stream claimed |
 | RegisterHotKey | Primary global fallback, MOD_NOREPEAT, registration error display | Requires manual Windows gesture-to-chord assignment; chord conflicts possible |

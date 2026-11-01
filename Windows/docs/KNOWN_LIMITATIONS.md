@@ -1,23 +1,25 @@
 # Known limitations and remaining work
 
-This is a runnable MVP, not a complete macOS feature-equivalent port.
+Phase 2 is runnable, not a complete macOS feature-equivalent port.
+See [PHASE2_REPORT](PHASE2_REPORT.md) for current evidence and acceptance steps.
 
 * No global raw Precision Touchpad capture. Windows owns exclusive PTP HID
   collections. Mouse hooks are not a workaround for raw multi-touch.
-* Native input is experimental, foreground-only, opt-in, and manipulation-only.
+* Native input is experimental, foreground-only and opt-in. WM_POINTER is manipulation-only.
   No physical sample stream was tested. Windows may deliver coalesced or
   synthesized initial frames; this provider processes current frames rather
   than full history. Single tap/hold native acquisition is not promised.
-* TouchpadGesturesController and PhysicalGestureRecognizer are probed, not
-  integrated. Three/four-finger physical actions use Windows shortcut mapping.
+* TouchpadGesturesController is integrated for foreground three/four-finger taps
+  and manipulations; activation succeeded, physical delivery is pending.
+  PhysicalGestureRecognizer is still a probe. Background use needs Windows shortcuts.
 * The reusable engine supports sequences and delayed tap dispatch, but the
   settings schema does not yet bind custom multi-step sequences. The simulation
   laboratory never performs actions. Native routing currently accepts swipes.
 * No Force Touch, pressure tiers, calibrated force graph, haptic actuator output,
   raw edge control surfaces, rotary knob or seek surface. Controls are disabled
   with a reason. Null optional sensor fields are intentional.
-* Menus and advanced sensitivity use JSON editors. A form-based nested menu
-  designer, drag reorder and dedicated sensitivity sliders remain future work.
+* Menus have a visual tree editor and up/down reorder. Advanced sensitivity uses
+  JSON; drag reorder and dedicated sensitivity sliders remain future work.
 * Profile identity uses executable names rather than authenticated full paths.
   All enabled profile hotkeys reserve their chords globally. Pausing stops
   dispatch but retains chord registration. Avoid common app shortcuts.

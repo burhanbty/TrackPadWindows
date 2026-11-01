@@ -11,6 +11,9 @@ public sealed class NativeTouchpadProvider : ITouchInputProvider
     private readonly RegisterDelegate? register;
     private readonly FrameDelegate? getFrame;
     private uint? previousFrame;
+    private bool disposed;
+    public long ReceivedFrames { get; private set; }
+    public long ReadErrors { get; private set; }
     private readonly Stopwatch clock=Stopwatch.StartNew();
     public string Name=>"Deneysel Windows ön plan manipülasyonu";
     public bool IsAvailable=>register is not null && getFrame is not null;
@@ -28,13 +31,19 @@ public sealed class NativeTouchpadProvider : ITouchInputProvider
     }
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(disposed,this);
         if(IsRunning)return;
         if(!IsAvailable) {Status="Bu Windows sürümünde gerekli ön plan API'leri yok. Genel kısayolları kullanın.";return;}
         IsRunning=register!(window,true);
         Status=IsRunning?"Ön plan girişi kaydedildi. Olay teslimi fiziksel olarak test edilmeli.":$"Windows kayıt isteğini reddetti: {Marshal.GetLastWin32Error()}";
     }
     public void Stop()
-    {if(IsRunning)register!(window,false);IsRunning=false;previousFrame=null;Frame?.Invoke(new(clock.Elapsed.TotalSeconds,[],true));}
+    {
+        if(disposed)return;
+        if(IsRunning && !register!(window,false))Status=$"Ön plan kaydı kapatılamadı: {Marshal.GetLastWin32Error()}";
+        else Status="Ön plan girişi kapalı · fiziksel test sonucu laboratuvar kaydındadır.";
+        IsRunning=false;previousFrame=null;Frame?.Invoke(new(clock.Elapsed.TotalSeconds,[],true));
+    }
     public void ProcessMessage(int message,nint wParam)
     {
         if(!IsRunning)return;
@@ -42,8 +51,15 @@ public sealed class NativeTouchpadProvider : ITouchInputProvider
         if(message is not (0x245 or 0x246 or 0x247))return;
         uint id=(uint)((long)wParam&0xffff),type=0;
         if(!GetPointerType(id,ref type) || type!=5)return;
+        ReadPointer(id);
+    }
+    // Called synchronously inside a controller pointer callback too. The shared
+    // frame ID deduplicates controller callbacks and foreground WM_POINTER.
+    public void ReadPointer(uint id)
+    {
+        if(disposed || getFrame is null)return;
         uint count=16;var info=new TouchInfo[16];
-        if(!getFrame!(id,ref count,info) || count==0 || count>16) {Status="Touchpad çerçevesi okunamadı.";Frame?.Invoke(new(clock.Elapsed.TotalSeconds,[],true));return;}
+        if(!getFrame(id,ref count,info) || count==0 || count>16) {ReadErrors++;Status=$"Touchpad çerçevesi okunamadı: {Marshal.GetLastWin32Error()}";Frame?.Invoke(new(clock.Elapsed.TotalSeconds,[],true));return;}
         if(previousFrame==info[0].Pointer.FrameId)return;previousFrame=info[0].Pointer.FrameId;
         var contacts=new List<Contact>();bool cancelled=false;
         foreach(var touch in info.Take((int)count))
@@ -54,12 +70,14 @@ public sealed class NativeTouchpadProvider : ITouchInputProvider
             if(!GetPointerDeviceRects(p.SourceDevice,out var device,out _) || device.Right<=device.Left || device.Bottom<=device.Top)
             {cancelled=true;continue;}
             double x=(p.HimetricRaw.X-device.Left)/(double)(device.Right-device.Left),y=(p.HimetricRaw.Y-device.Top)/(double)(device.Bottom-device.Top);
+            if(!double.IsFinite(x+y) || x<0 || x>1 || y<0 || y>1){cancelled=true;continue;}
             // The pressure field may contain a default 512 even without a sensor; do not expose it as force evidence.
             contacts.Add(new((int)p.Id,new(x,y)));
         }
+        ReceivedFrames++;Status=$"Gerçek yerel çerçeve alındı · {contacts.Count} temas · toplam {ReceivedFrames}";
         Frame?.Invoke(new(clock.Elapsed.TotalSeconds,contacts,cancelled));
     }
-    public void Dispose(){Stop();if(library!=0)NativeLibrary.Free(library);}
+    public void Dispose(){if(disposed)return;Stop();disposed=true;if(library!=0)NativeLibrary.Free(library);}
     [UnmanagedFunctionPointer(CallingConvention.Winapi,SetLastError=true)] private delegate bool RegisterDelegate(nint hwnd,[MarshalAs(UnmanagedType.Bool)] bool enabled);
     [UnmanagedFunctionPointer(CallingConvention.Winapi,SetLastError=true)] private delegate bool FrameDelegate(uint id,ref uint count,[Out,MarshalAs(UnmanagedType.LPArray,SizeParamIndex=1)] TouchInfo[] info);
     [StructLayout(LayoutKind.Sequential)] private struct Point {public int X,Y;}

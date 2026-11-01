@@ -9,6 +9,9 @@ public sealed class ActionSpec
 }
 public sealed class Binding
 {
+    public InputRoute Input { get; set; } = InputRoute.Automatic;
+    [JsonIgnore] public bool UsesShortcut => Input != InputRoute.Native && !string.IsNullOrWhiteSpace(Shortcut);
+    [JsonIgnore] public bool UsesNative => Input == InputRoute.Native || (Input == InputRoute.Automatic && string.IsNullOrWhiteSpace(Shortcut));
     public string Name { get; set; } = "Yeni hareket";
     public string Shortcut { get; set; } = "Ctrl+Alt+F8";
     public GestureKind Gesture { get; set; } = GestureKind.Tap;
@@ -32,6 +35,7 @@ public sealed class MenuEntry
 }
 public sealed class Configuration
 {
+    public AppearanceSettings Appearance { get; set; } = new();
     public int Version { get; set; } = 1;
     public bool MinimizeToTray { get; set; } = true;
     public string ActiveMode { get; set; } = "Normal";
@@ -65,6 +69,8 @@ public sealed class Configuration
         if(Gestures is null || Bindings is null || Profiles is null || Menu is null || ActiveMode is null) throw new ArgumentException("Yapılandırma alanları null olamaz.");
         if(Version!=1) throw new ArgumentException("Desteklenmeyen yapılandırma sürümü.");
         Gestures.Validate();
+        if(Appearance is null) throw new ArgumentException("Görünüm ayarları boş olamaz.");
+        Appearance.Validate();
         if(Menu.Count==0 || Menu.Count>12) throw new ArgumentException("Ana menü 1–12 öğe içermeli.");
         void ValidateBindings(IEnumerable<Binding> bindings)
         {
@@ -72,11 +78,12 @@ public sealed class Configuration
             foreach(var b in bindings)
             {
                 if(b is null || b.Mode is null || b.Action is null) throw new ArgumentException("Eşleme alanları null olamaz.");
+                if(!Enum.IsDefined(b.Input) || (b.Input==InputRoute.Shortcut && string.IsNullOrWhiteSpace(b.Shortcut))) throw new ArgumentException("Kısayol yolu için bir kısayol gerekli.");
                 if(b.Fingers<1 || b.Fingers>4 || !Enum.IsDefined(b.Gesture) || !Enum.IsDefined(b.Zone)) throw new ArgumentException("Geçersiz hareket.");
                 if(!string.IsNullOrWhiteSpace(b.Shortcut))
                 {
                     var normalized=Shortcut.Parse(b.Shortcut).Canonical;
-                    if(b.Enabled)
+                    if(b.Enabled && b.UsesShortcut)
                     {
                         if(keys.Any(k=>k.Key==normalized && (k.Mode=="*" || b.Mode=="*" || k.Mode.Equals(b.Mode,StringComparison.OrdinalIgnoreCase)))) throw new ArgumentException("Çakışan kısayol: "+b.Shortcut);
                         keys.Add((b.Mode,normalized));

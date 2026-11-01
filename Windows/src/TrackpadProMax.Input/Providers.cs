@@ -18,10 +18,11 @@ public sealed class GlobalHotkeys(nint window) : IDisposable
 {
     private readonly Dictionary<int,Shortcut> registrations=new();
     public event Action<Shortcut>? Triggered;
+    public IReadOnlyCollection<Shortcut> Registered => registrations.Values.ToArray();
     public IReadOnlyList<string> Configure(IEnumerable<Binding> bindings)
     {
         Dispose(); var errors=new List<string>(); int id=1;
-        foreach(var text in bindings.Where(b=>b.Enabled && !string.IsNullOrWhiteSpace(b.Shortcut)).Select(b=>b.Shortcut).Distinct())
+        foreach(var text in bindings.Where(b=>b.Enabled && b.UsesShortcut).Select(b=>b.Shortcut).Distinct())
         {
             try
             {
