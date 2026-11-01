@@ -1,25 +1,28 @@
 # Known limitations and remaining work
 
-Phase 2 is runnable, not a complete macOS feature-equivalent port.
-See [PHASE2_REPORT](PHASE2_REPORT.md) for current evidence and acceptance steps.
+Phase 3 is runnable, not a complete macOS feature-equivalent port.
+See [PHASE3_REPORT](PHASE3_REPORT.md) for current evidence and acceptance steps.
 
 * No global raw Precision Touchpad capture. Windows owns exclusive PTP HID
   collections. Mouse hooks are not a workaround for raw multi-touch.
 * Native input is experimental, foreground-only and opt-in. WM_POINTER is manipulation-only.
-  No physical sample stream was tested. Windows may deliver coalesced or
+  Real three-finger contact samples were delivered locally. Windows may deliver coalesced or
   synthesized initial frames; this provider processes current frames rather
   than full history. Single tap/hold native acquisition is not promised.
 * TouchpadGesturesController is integrated for foreground three/four-finger taps
-  and manipulations; activation succeeded, physical delivery is pending.
+  and manipulations; real contact delivery and three-finger taps were observed.
   PhysicalGestureRecognizer is still a probe. Background use needs Windows shortcuts.
 * The reusable engine supports sequences and delayed tap dispatch, but the
   settings schema does not yet bind custom multi-step sequences. The simulation
   laboratory never performs actions. Native routing currently accepts swipes.
-* No Force Touch, pressure tiers, calibrated force graph, haptic actuator output,
-  raw edge control surfaces, rotary knob or seek surface. Controls are disabled
-  with a reason. Null optional sensor fields are intentional.
-* Menus have a visual tree editor and up/down reorder. Advanced sensitivity uses
-  JSON; drag reorder and dedicated sensitivity sliders remain future work.
+* No Force Touch, pressure tiers, calibrated force graph, haptic actuator output
+  or rotary knob. Null optional sensor fields are intentional. Edge/corner
+  recognition and relative seek surfaces are implemented, but individual physical
+  region/action results are reported separately. Single-finger edges and spatial
+  corner taps/holds are not supplied by the implemented APIs.
+* Menus have a visual tree editor and up/down reorder. Surface regions have a
+  visual map and sensitivity sliders. General recognizer sensitivity still uses
+  JSON; drag reorder remains future work.
 * Profile identity uses executable names rather than authenticated full paths.
   All enabled profile hotkeys reserve their chords globally. Pausing stops
   dispatch but retains chord registration. Avoid common app shortcuts.
@@ -42,8 +45,10 @@ See [PHASE2_REPORT](PHASE2_REPORT.md) for current evidence and acceptance steps.
   It does not index installed apps, import pinned apps or execute shell scripts.
 * No installer, signing, automatic updater, startup registration, telemetry,
   network service or driver. Distribution is a whole self-contained folder.
-* Diagnostics inventory can identify generic device labels without a vendor;
-  HID report descriptors/pressure usages and actual haptic devices are not read.
+* Diagnostics inventory can identify generic device labels without a vendor.
+  PTP descriptor caps can be queried locally, but the direct read handle failed
+  with sharing violation (32). Descriptor metadata does not prove a live sensor.
+  Full report-field decoding and actual haptic devices remain unverified.
 * Accessibility/DPI/keyboard behavior has only limited local inspection. No
   multi-hour soak, second-machine test, performance benchmark or commercial
   usability acceptance was completed.

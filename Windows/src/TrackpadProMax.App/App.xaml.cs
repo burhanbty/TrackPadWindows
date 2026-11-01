@@ -27,6 +27,8 @@ public partial class App : Application
             MessageBox.Show(args.Exception.Message,"TrackpadProMax — hata"); args.Handled=true;
         };
         var window=new MainWindow(); MainWindow=window; window.Show();
+        if(e.Args.Length==2 && e.Args[0]=="--surface-probe")window.BeginPhysicalProbe(e.Args[1]);
+        if(e.Args.Contains("--surface"))window.OpenSurfaceControls();
         if(e.Args.Contains("--smoke"))
         {
             // Visual initialization smoke only; no input injection or external action.

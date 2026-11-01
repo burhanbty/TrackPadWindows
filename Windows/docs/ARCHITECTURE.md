@@ -1,5 +1,15 @@
 # Architecture and upstream portability review
 
+Phase 3 update: [PHASE3_REPORT](PHASE3_REPORT.md) and
+[hardware investigation](PHASE3_HARDWARE.md). `SurfaceTracker` consumes only
+normalized contact frames, locks an outer region contact and produces bounded
+relative action requests. `SurfaceSettings` adds eight validated regions without
+changing the version-1 schema. Surface sessions and the foreground providers end
+on focus loss; action cancellation prevents deferred effects. Spatial taps and
+background capture are not inferred from global gestures. The zone laboratory
+defaults to preview; action execution is separately selected. Critical recognition
+events are retained separately from the bounded high-frequency contact log.
+
 Phase 2 update (2026-11-01): see [PHASE2_REPORT](PHASE2_REPORT.md). Shared glass
 resources, laboratory evidence models and explicit input routes extend this
 architecture. Runtime-gated TouchpadGesturesController callbacks feed the same
@@ -28,7 +38,7 @@ the Apache-2.0 attribution; adapted algorithm files also identify the source.
 | ModeWheelView / RadialSelector | SwiftUI sectors; finger-relative virtual knob | WPF sector geometry and nested menus; mouse/keyboard steering instead of raw finger steering |
 | TilingLayout / TilingFlow | Portable normalized 2/3/4 pane layout; macOS window selection | Same split geometry, Win32 monitor work areas and window APIs |
 | LauncherApps | Dock discovery and bundle IDs | Explicit user-defined EXE/URL list; no Dock-equivalent assumptions |
-| ControlSurface | Edge bars for audio, brightness, seeking | Defer touch surfaces; expose discrete Windows actions instead |
+| ControlSurface | Origin-locked edge bars, relative gain, session cancellation | Device-coordinate SurfaceTracker with configurable edges/corners and Windows volume/brightness/seek actions |
 | NowPlaying | Private MediaRemote and AppleScript fallbacks | Windows GlobalSystemMediaTransportControlsSessionManager |
 | HapticEngine | Apple private MTActuator / NSHapticFeedbackManager | Defer actuator control; use visual sector feedback |
 | Pressure visualizer | Displays measured Apple pressure | No pressure graph without measured force; synthetic gesture laboratory is labeled |
@@ -63,7 +73,8 @@ Windows-configured physical gesture -> Windows shortcut -> WM_HOTKEY
     -> matching enabled profile/mode binding -> action executor -> result UI
 
 Optional foreground touchpad WM_POINTER -> device-relative HIMETRIC contacts
-    -> GestureRecognizer -> swipe binding -> action executor
+    -> Surface Mode / zone test active: SurfaceTracker -> region action / preview
+    -> otherwise: GestureRecognizer -> swipe binding -> action executor
 
 Synthetic contacts -> same recognizer -> laboratory output only
 ```

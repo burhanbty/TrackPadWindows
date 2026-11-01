@@ -8,6 +8,13 @@ using Xunit;
 namespace TrackpadProMax.WindowsTests;
 public class WindowsTests
 {
+    [Theory][InlineData("volume","2")][InlineData("brightness","2")][InlineData("seek","2")][InlineData("media","next")]
+    public async Task CancelledSurfaceActionsDoNotTouchHardwareOrPlayback(string kind,string value)
+    {
+        using var cancellation=new CancellationTokenSource();cancellation.Cancel();
+        var result=await new WindowsActions().ExecuteAsync(new(){Kind=kind,Value=value},0,cancellation.Token);
+        Assert.False(result.Success);
+    }
     [Fact] public async Task RealWindowActionsAndLauncherWorkOnDisposableWindow()
     {
         var root=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../"));

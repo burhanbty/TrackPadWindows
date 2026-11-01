@@ -15,7 +15,7 @@ public sealed class AppearanceSettings
     }
 }
 public enum EvidenceSource { NativePointer, NativeController, Shortcut, Simulation, System }
-public sealed record LaboratoryEvent(DateTimeOffset At, EvidenceSource Source, string Detail, int? Fingers=null, IReadOnlyList<Contact>? Contacts=null, GestureKind? Gesture=null);
+public sealed record LaboratoryEvent(DateTimeOffset At, EvidenceSource Source, string Detail, int? Fingers=null, IReadOnlyList<Contact>? Contacts=null, GestureKind? Gesture=null, SurfaceEvent? Surface=null);
 public sealed class LaboratoryJournal(int capacity=200)
 {
     private readonly Queue<LaboratoryEvent> events=new();

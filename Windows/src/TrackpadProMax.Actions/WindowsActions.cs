@@ -10,24 +10,29 @@ public sealed class WindowsActions : IActionExecutor
 {
     public event Action? WheelRequested;
     public event Action<string>? ModeRequested;
+    private string? seekSession;
+    private long seekPosition;
+    private DateTimeOffset seekAt;
     public static nint ForegroundWindow=>Win32.GetForegroundWindow();
     public static string ProcessName(nint window)
     {
         try { Win32.GetWindowThreadProcessId(window,out var pid); using var p=Process.GetProcessById((int)pid); return p.ProcessName; } catch { return ""; }
     }
     public static bool IsExternalWindow(nint hwnd)=>hwnd!=0 && Win32.IsWindow(hwnd) && !ProcessName(hwnd).Equals(Process.GetCurrentProcess().ProcessName,StringComparison.OrdinalIgnoreCase);
-    public async Task<ActionResult> ExecuteAsync(ActionSpec action,nint target)
+    public Task<ActionResult> ExecuteAsync(ActionSpec action,nint target)=>ExecuteAsync(action,target,CancellationToken.None);
+    public async Task<ActionResult> ExecuteAsync(ActionSpec action,nint target,CancellationToken cancellation)
     {
         try
         {
             Configuration.ValidateAction(action);
+            cancellation.ThrowIfCancellationRequested();
             switch(action.Kind)
             {
                 case "wheel": WheelRequested?.Invoke(); break;
                 case "mode": ModeRequested?.Invoke(action.Value); break;
                 case "keys":
                     if(!IsExternalWindow(target) || !Win32.SetForegroundWindow(target)) return ActionResult.Fail("Hedef pencere etkinleştirilemedi.");
-                    await Task.Delay(70);
+                    await Task.Delay(70,cancellation);
                     if(Win32.GetForegroundWindow()!=target) return ActionResult.Fail("Hedef pencere odağı değişti; kısayol iptal edildi.");
                     SendKeys(Shortcut.Parse(action.Value)); break;
                 case "media":
@@ -35,14 +40,16 @@ public sealed class WindowsActions : IActionExecutor
                     {
                         try
                         {
-                            var manager=await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();var session=manager.GetCurrentSession();
+                            var manager=await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();cancellation.ThrowIfCancellationRequested();var session=manager.GetCurrentSession();
                             if(session is not null)
                             {
                                 bool accepted=action.Value=="play"?await session.TryTogglePlayPauseAsync():action.Value=="next"?await session.TrySkipNextAsync():await session.TrySkipPreviousAsync();
                                 if(accepted)return ActionResult.Ok("Windows medya oturumu eylemi kabul etti.");
                             }
-                        }catch { /* Unsupported session: fall back to the documented virtual media key. */ }
+                        }catch(OperationCanceledException){throw;}
+                        catch { /* Unsupported session: fall back to the documented virtual media key. */ }
                     }
+                    cancellation.ThrowIfCancellationRequested();
                     var key=action.Value switch {"play"=>0xB3,"next"=>0xB0,"previous"=>0xB1,"up"=>0xAF,"down"=>0xAE,"mute"=>0xAD,_=>throw new ArgumentException("Bilinmeyen medya eylemi.")};
                     SendKeys(new(0,(uint)key)); break;
                 case "window": return ManageWindow(action.Value,target);
@@ -52,7 +59,25 @@ public sealed class WindowsActions : IActionExecutor
                 case "touchpadsettings": Start("ms-settings:devices-touchpad"); break;
                 case "taskmanager": Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"Taskmgr.exe")); break;
                 case "lock": if(!Win32.LockWorkStation()) throw new Win32Exception(); break;
-                case "brightness": return await BrightnessAsync(int.Parse(action.Value,System.Globalization.CultureInfo.InvariantCulture));
+                case "brightness": return await BrightnessAsync(int.Parse(action.Value,System.Globalization.CultureInfo.InvariantCulture),cancellation);
+                case "volume": return EndpointVolume.Adjust(int.Parse(action.Value,System.Globalization.CultureInfo.InvariantCulture));
+                case "seek":
+                    var mediaManager=await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+                    cancellation.ThrowIfCancellationRequested();
+                    var mediaSession=mediaManager.GetCurrentSession();
+                    if(mediaSession is null)return ActionResult.Fail("Zaman çizelgesi: etkin Windows medya oturumu yok.");
+                    if(!mediaSession.GetPlaybackInfo().Controls.IsPlaybackPositionEnabled)return ActionResult.Fail("Oynatıcı zaman konumu değiştirmeyi desteklemiyor.");
+                    var timeline=mediaSession.GetTimelineProperties();
+                    var minimum=timeline.MinSeekTime;var maximum=timeline.MaxSeekTime;
+                    if(maximum<=minimum)return ActionResult.Fail("Oynatıcı geçerli bir aranabilir zaman aralığı sağlamadı.");
+                    string sessionId=mediaSession.SourceAppUserModelId;
+                    // Some players publish timeline.Position less frequently than our
+                    // repeat interval. Accumulate accepted rapid relative seeks.
+                    long baseline=sessionId==seekSession && DateTimeOffset.UtcNow-seekAt<TimeSpan.FromSeconds(1)?seekPosition:timeline.Position.Ticks;
+                    long seekTicks=Math.Clamp(baseline+TimeSpan.FromSeconds(int.Parse(action.Value,System.Globalization.CultureInfo.InvariantCulture)).Ticks,minimum.Ticks,maximum.Ticks);
+                    bool sought=await mediaSession.TryChangePlaybackPositionAsync(seekTicks);
+                    if(sought){seekSession=sessionId;seekPosition=seekTicks;seekAt=DateTimeOffset.UtcNow;}
+                    return sought?ActionResult.Ok("Medya oturumu zaman konumunu kabul etti."):ActionResult.Fail("Oynatıcı zaman konumunu reddetti.");
                 default: return ActionResult.Fail("Eylem desteklenmiyor.");
             }
             return ActionResult.Ok();
@@ -113,20 +138,21 @@ public sealed class WindowsActions : IActionExecutor
         try { var manager=await GlobalSystemMediaTransportControlsSessionManager.RequestAsync(); var session=manager.GetCurrentSession(); if(session is null) return "Etkin medya oturumu yok."; var props=await session.TryGetMediaPropertiesAsync(); return $"{props.Title} · {props.Artist}"; }
         catch(Exception ex) { return "Medya bilgisi erişilemiyor: "+ex.Message; }
     }
-    private static async Task<ActionResult> BrightnessAsync(int delta)
+    private static async Task<ActionResult> BrightnessAsync(int delta,CancellationToken cancellation)
     {
         // OEM-dependent WMI method, invoked only by an explicit user action.
         return await Task.Run(()=>
         {
             try
             {
+                cancellation.ThrowIfCancellationRequested();
                 using var current=new System.Management.ManagementObjectSearcher("root\\WMI","SELECT CurrentBrightness FROM WmiMonitorBrightness WHERE Active=True");
                 using var readings=current.Get(); var value=readings.Cast<System.Management.ManagementObject>().FirstOrDefault();
                 if(value is null) return ActionResult.Fail("Bu ekran parlaklık WMI arayüzünü sunmuyor.");
                 byte level=(byte)Math.Clamp(Convert.ToInt32(value["CurrentBrightness"])+delta,0,100);
                 using var search=new System.Management.ManagementObjectSearcher("root\\WMI","SELECT * FROM WmiMonitorBrightnessMethods WHERE Active=True");
                 using var methods=search.Get(); bool changed=false;
-                foreach(System.Management.ManagementObject method in methods) { using(method) { method.InvokeMethod("WmiSetBrightness",[1u,level]); changed=true; } }
+                foreach(System.Management.ManagementObject method in methods) { using(method) { cancellation.ThrowIfCancellationRequested();method.InvokeMethod("WmiSetBrightness",[1u,level]); changed=true; } }
                 return changed?ActionResult.Ok($"Parlaklık %{level}"):ActionResult.Fail("Parlaklık aygıtı bulunamadı.");
             } catch(Exception ex) { return ActionResult.Fail("Parlaklık desteklenmiyor / erişilemiyor: "+ex.Message); }
         });

@@ -19,6 +19,7 @@ public sealed class DiagnosticReport
     public string Model { get; set; } = "Unknown";
     public List<DeviceRecord> Devices { get; set; } = [];
     public List<RawHidRecord> RawInputDevices { get; set; } = [];
+    public List<HidAccessEvidence> TouchpadHidAccess { get; set; } = [];
     public List<Capability> Capabilities { get; set; } = [];
     public List<string> Errors { get; set; } = [];
     public string ToJson()=>JsonSerializer.Serialize(this,new JsonSerializerOptions{WriteIndented=true,Converters={new JsonStringEnumConverter()}});
@@ -37,6 +38,14 @@ public static class DiagnosticsCollector
         Query(r,"SELECT Manufacturer, Model FROM Win32_ComputerSystem",o=>{ r.Manufacturer=Text(o,"Manufacturer");r.Model=Text(o,"Model"); });
         Query(r,"SELECT Name, Manufacturer, PNPDeviceID, Status FROM Win32_PnPEntity WHERE PNPClass='HIDClass' OR PNPClass='Mouse'",o=>r.Devices.Add(new(Text(o,"Name"),Text(o,"Manufacturer"),Text(o,"PNPDeviceID"),Text(o,"Status"))));
         EnumerateRawInput(r);
+        foreach(var device in r.RawInputDevices.Where(d=>d.UsagePage==13 && d.Usage==5))
+        {
+            try{r.TouchpadHidAccess.Add(HidAccessProbe.Probe(device.Path));}
+            catch(Exception ex){r.Errors.Add("PTP read-only access probe: "+ex.Message);}
+        }
+        foreach(var access in r.TouchpadHidAccess)
+            r.Capabilities.Add(new("Direct user-mode PTP HID read handle",access.ReadHandleOpened?CapabilityStatus.UnknownRequiresPhysicalTesting:CapabilityStatus.NotAccessible,
+                $"Metadata open: {access.MetadataOpened}; descriptor: {access.DescriptorRead}; input report bytes: {access.InputReportBytes}; GENERIC_READ open: {access.ReadHandleOpened}; Win32 error: {access.ReadOpenError}. No input reports read; handle access is not physical delivery."));
         string[] exports=["RegisterTouchpadCapableWindow","RegisterTouchpadCapableThread","GetPointerTouchpadInfo","GetPointerFrameTouchpadInfo","GetPointerFrameTouchpadInfoHistory","GetPointerDevices","GetPointerInfo","RegisterRawInputDevices","RegisterHotKey","SetWindowsHookExW"];
         if(NativeLibrary.TryLoad("user32.dll",out var module))
         {

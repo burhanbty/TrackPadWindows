@@ -38,7 +38,7 @@ public sealed partial class MainWindow : Window
         GlassTheme.Apply(config.Appearance);
         committedJson=ConfigurationStore.Serialize(config);
         actions.WheelRequested+=OpenWheel;
-        actions.ModeRequested+=mode=>{ config.ActiveMode=mode;if(SaveConfiguration()){modeText.Text=config.ActiveMode.ToUpperInvariant();status.Text="Etkin mod: "+config.ActiveMode;} };
+        actions.ModeRequested+=mode=>{ StopSurface("Mod değişti");if(nativeWanted)SetNative(false);config.ActiveMode=mode;if(SaveConfiguration()){modeText.Text=config.ActiveMode.ToUpperInvariant();status.Text="Etkin mod: "+config.ActiveMode;if(mode.Equals("Surface",StringComparison.OrdinalIgnoreCase)){ShowSettings();SurfacePage();ArmSurface();}} };
         var root=new Grid();root.ColumnDefinitions.Add(new(){Width=new GridLength(226)});root.ColumnDefinitions.Add(new());
         root.SetResourceReference(Panel.BackgroundProperty,"WindowTintBrush");modeText.SetResourceReference(TextBlock.ForegroundProperty,"TextBrush");
         var nav=new StackPanel{Margin=new Thickness(20,30,14,20)};
@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
         void Nav(string label,Action show) { var b=Button(label,show);b.HorizontalContentAlignment=HorizontalAlignment.Left;b.SetResourceReference(Control.BackgroundProperty,"GlassBrush");nav.Children.Add(b); }
         Nav("◈   Genel Bakış",Dashboard);Nav("⌁   Hareketler",GesturesPage);Nav("▤   Uygulama Profilleri",ProfilesPage);Nav("◎   Radyal Menü",MenuPage);Nav("↗   Eylemler",ActionsPage);Nav("▥   Aygıt Tanılama",DiagnosticsPage);Nav("⚙   Ayarlar",SettingsPage);
         Nav("◌   Laboratuvar",LaboratoryPage);Nav("↪   Kısayol Kurulumu",SetupPage);
+        Nav("▧   Yüzey Denetimi",SurfacePage);
         nav.Children.Add(new Border{Height=28});nav.Children.Add(modeText);
         nav.Children.Add(new TextBlock{Text="Yerel. Sürücüsüz.\nTelemetri yok.",FontSize=12,Foreground=Brushes.LightSlateGray,Margin=new Thickness(0,20,0,0)});
         var navigation=new Border{Child=new ScrollViewer{Content=nav,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled},BorderThickness=new Thickness(0,0,1,0)};navigation.SetResourceReference(Border.BackgroundProperty,"GlassBrush");navigation.SetResourceReference(Border.BorderBrushProperty,"LineBrush");root.Children.Add(navigation);
@@ -58,8 +59,9 @@ public sealed partial class MainWindow : Window
         Closing+=(_,e)=>{ if(!exiting && config.MinimizeToTray) {e.Cancel=true;Hide();} };
         Closed+=(_,_)=>{hotkeys?.Dispose();controller?.Dispose();native?.Dispose();labTimer.Stop();foregroundTimer.Stop();source?.RemoveHook(WndProc);tray?.Dispose();if(!exiting)Application.Current.Shutdown();};
         Activated+=(_,_)=>{if(nativeWanted)controller?.Start();};
-        Deactivated+=(_,_)=>{controller?.Stop();nativeRecognizer?.Cancel();};
-        labTimer.Tick+=(_,_)=>RefreshLaboratory();labTimer.Start();
+        Deactivated+=(_,_)=>{StopSurface("Odak kaybı · yeniden etkinleştirin");SetNative(false);nativeRecognizer?.Cancel();};
+        PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape && (surfaceActive || zoneTesting || nativeWanted)){StopSurface("Esc ile kapatıldı");SetNative(false);e.Handled=true;}};
+        labTimer.Tick+=(_,_)=>{RefreshLaboratory();RefreshSurface();};labTimer.Start();
         Dashboard();
     }
     private void InitializeInput()
@@ -92,7 +94,7 @@ public sealed partial class MainWindow : Window
         tray=new(){Icon=System.Drawing.SystemIcons.Application,Text="TrackpadProMax",Visible=true};
         var menu=new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("Ayarları aç",null,(_,_)=>ShowSettings());menu.Items.Add("Mod çarkı",null,(_,_)=>OpenWheel());
-        var pauseItem=menu.Items.Add("Hareketleri duraklat",null,(_,_)=>{ paused=!paused;status.Text=paused?"Hareketler duraklatıldı.":"Hareketler etkin."; });
+        var pauseItem=menu.Items.Add("Hareketleri duraklat",null,(_,_)=>{ paused=!paused;if(paused){StopSurface("Duraklatıldı");SetNative(false);}status.Text=paused?"Hareketler duraklatıldı.":"Hareketler etkin."; });
         menu.Opening+=(_,_)=>pauseItem.Text=paused?"Hareketleri sürdür":"Hareketleri duraklat";
         menu.Items.Add("Aygıt tanılama",null,(_,_)=>{ShowSettings();DiagnosticsPage();});menu.Items.Add("Çıkış",null,(_,_)=>Exit());
         tray.ContextMenuStrip=menu;tray.DoubleClick+=(_,_)=>ShowSettings();modeText.Text=config.ActiveMode.ToUpperInvariant();
@@ -101,10 +103,11 @@ public sealed partial class MainWindow : Window
     private GestureRecognizer? nativeRecognizer;
     private async void OnNativeFrame(TouchFrame frame)
     {
-        Record(new(DateTimeOffset.Now,frame.Cancelled?EvidenceSource.System:EvidenceSource.NativePointer,frame.Cancelled?"Akış iptal edildi":"HIMETRIC · cihaz koordinatları",frame.Contacts.Count,frame.Cancelled?null:frame.Contacts.ToArray()));
+        Record(new(DateTimeOffset.Now,frame.Cancelled?EvidenceSource.System:EvidenceSource.NativePointer,frame.Cancelled?"Akış iptal edildi":"HIMETRIC · cihaz koordinatları · "+native?.LastRoute,frame.Contacts.Count,frame.Cancelled?null:frame.Contacts.ToArray()));
         lastFrame=frame;lastContactAt=DateTimeOffset.Now;
-        if(frame.Cancelled) { nativeRecognizer?.Cancel();return; }
+        if(frame.Cancelled) { nativeRecognizer?.Cancel();await ProcessSurfaceAsync(frame);return; }
         if(paused || !IsActive) return;
+        if(surfaceActive || zoneTesting){nativeRecognizer?.Cancel();await ProcessSurfaceAsync(frame);return;}
         nativeRecognizer??=new(config.Gestures);
         try
         {
@@ -166,17 +169,18 @@ public sealed partial class MainWindow : Window
     {var b=new Button{Content=text};b.Click+=(_,_)=>click();return b;}
     private static TextBlock Text(string text,double size=14)=>new(){Text=text,FontSize=size,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
     private void BeginPage(string title,string subtitle)
-    {labView=null;setupVisible=false;verificationChord=null;page.Children.Clear();page.Children.Add(Text(title,30));var description=new TextBlock{Text=subtitle,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,24)};description.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");page.Children.Add(description);}
+    {StopSurface("Sayfa değişti");if(nativeWanted)SetNative(false);surfaceMap=null;surfaceFeedback=null;surfaceState=null;zoneTestText=null;labView=null;setupVisible=false;verificationChord=null;page.Children.Clear();page.Children.Add(Text(title,30));var description=new TextBlock{Text=subtitle,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,24)};description.SetResourceReference(TextBlock.ForegroundProperty,"MutedBrush");page.Children.Add(description);}
     private static Border Card(UIElement child)=>GlassTheme.Card(child);
     private static WrapPanel Row(params UIElement[] children) {var row=new WrapPanel();foreach(var c in children) row.Children.Add(c);return row;}
     private void Dashboard()
     {
-        BeginPage("Dokunmatik yüzeyiniz.\nSizin iş akışınız.","TrackpadProMax Windows · Liquid Glass / Phase 2");
+        BeginPage("Dokunmatik yüzeyiniz.\nSizin iş akışınız.","TrackpadProMax Windows · Liquid Glass / Phase 3");
+        page.Children.Add(Card(Row(Button("▧  Yüzey kontrolünü aç",SurfacePage),Text("Kenar ve köşe kontrolleri · açık oturumda / ön planda",12))));
         var hero=new StackPanel();hero.Children.Add(Text("HAREKETTEN EYLEME",12));hero.Children.Add(Text("Tek kısayol. Altı kontrol alanı.",23));
         hero.Children.Add(Text("Ctrl + Alt + F8 ile mod çarkını her uygulamadan açın. Ok tuşlarıyla gezin, Enter ile seçin, Esc ile kapatın."));
         hero.Children.Add(Row(Button("◎  Mod çarkını aç",OpenWheel),Button("Windows hareketlerini ayarla",()=>_=Execute(new(){Kind="touchpadsettings"}))));page.Children.Add(Card(hero));
         var info=new StackPanel();info.Children.Add(Text("Güvenilir başlangıç",19));info.Children.Add(Text("Windows Ayarları → Bluetooth ve cihazlar → Dokunmatik yüzey → Gelişmiş hareketler. Üç/dört parmak hareketi için ‘Özel kısayol’ seçip burada tanımladığınız kısayolu kaydedin. Windows ayarları otomatik değiştirilmez."));info.Children.Add(Text("Basınç ve haptik geri bildirim doğrulanmadı. Fare imleci konumu yüzey temas konumu olarak kullanılmaz."));info.Children.Add(Row(Button("Hareket eşlemeleri",GesturesPage),Button("Donanımı incele",DiagnosticsPage)));page.Children.Add(Card(info));
-        var controls=new StackPanel();controls.Children.Add(Text("Giriş durumu",19));controls.Children.Add(Text(registrationStatus));controls.Children.Add(Button(paused?"Hareketleri sürdür":"Hareketleri duraklat",()=>{paused=!paused;nativeRecognizer?.Cancel();Dashboard();}));page.Children.Add(Card(controls));
+        var controls=new StackPanel();controls.Children.Add(Text("Giriş durumu",19));controls.Children.Add(Text(registrationStatus));controls.Children.Add(Button(paused?"Hareketleri sürdür":"Hareketleri duraklat",()=>{paused=!paused;nativeRecognizer?.Cancel();StopSurface("Duraklatma değişti");SetNative(false);Dashboard();}));page.Children.Add(Card(controls));
     }
     private DataGrid BindingsGrid(IEnumerable<Binding> bindings)
     {
@@ -199,6 +203,7 @@ public sealed partial class MainWindow : Window
         page.Children.Add(Text("Eylem türleri: wheel, media, window, keys, launch, url, mode, settings, touchpadsettings, taskmanager, lock, brightness. Ayrıntılar Eylemler sayfasında. Aynı kapsam ve moddaki yinelenen kısayollar kayıtta reddedilir. Genel tuş kaydı çakışmaları alt durum alanında gösterilir."));
         page.Children.Add(Text("Automatic: kısayol varsa yalnızca kısayol, yoksa yerel giriş. Native: yalnızca ön planda deneysel yerel giriş; Shortcut: Windows'ta elle atanır. Yerel tek parmak, çift dokunuş/uzun basış desteklenmez. Basınç/haptik yok."));
         BindingComposer();
+        page.Children.Add(Button("Görsel touchpad haritası · bölge atamalarını düzenle",SurfacePage));
         page.Children.Add(Row(Button("Touchpad Laboratuvarı",LaboratoryPage),Button("Türkçe kısayol kurulumu",SetupPage)));
     }
     private void SimulationPanel()
@@ -295,12 +300,13 @@ public sealed partial class MainWindow : Window
         page.Children.Add(Row(Button("Doğrula ve kaydet",()=>{try{var candidate=ConfigurationStore.Deserialize(editor.Text);config=candidate;SaveConfiguration();modeText.Text=config.ActiveMode.ToUpperInvariant();}catch(Exception ex){status.Text="Geçersiz ayarlar: "+ex.Message;}}),Button("Varsayılanlara dön",()=>{if(MessageBox.Show("Mevcut ayarları varsayılanlarla değiştir? Önceki dosya .bak olarak korunur.","Ayarları sıfırla",MessageBoxButton.YesNo)==MessageBoxResult.Yes){config=Configuration.Default();SaveConfiguration();SettingsPage();}})));
         page.Children.Add(Text(configPath,12));
         page.Children.Add(Button("Yerel girişi Touchpad Laboratuvarında test et",LaboratoryPage));
-        var unsupported=Button("Basınç / haptik / yüzey çubukları",()=>{});unsupported.IsEnabled=false;unsupported.ToolTip="Fiziksel aygıt desteği doğrulanmadı; bu sürümde kullanılamıyor.";page.Children.Add(unsupported);
+        page.Children.Add(Button("Yüzey bölgeleri ve hassasiyet",SurfacePage));
+        var unsupported=Button("Basınç / haptik",()=>{});unsupported.IsEnabled=false;unsupported.ToolTip="Fiziksel aygıt desteği doğrulanmadı; bu sürümde kullanılamıyor.";page.Children.Add(unsupported);
         page.Children.Add(Button("Uygulamadan çık",Exit));
     }
     public async Task RunSmokeAsync()
     {
-        foreach(var (name,show) in new (string,Action)[]{("Dashboard",Dashboard),("Gestures",GesturesPage),("Profiles",ProfilesPage),("RadialEditor",MenuPage),("Actions",ActionsPage),("Settings",SettingsPage),("Laboratory",LaboratoryPage),("Setup",SetupPage)}) {show();smokePages.Add(name);}
+        foreach(var (name,show) in new (string,Action)[]{("Dashboard",Dashboard),("Gestures",GesturesPage),("Profiles",ProfilesPage),("RadialEditor",MenuPage),("Actions",ActionsPage),("Settings",SettingsPage),("Laboratory",LaboratoryPage),("Setup",SetupPage),("Surface",SurfacePage),("ZoneLaboratory",ZoneLaboratoryPage)}) {show();smokePages.Add(name);}
         report=await DiagnosticsCollector.CollectAsync();DiagnosticsPage();smokePages.Add("Diagnostics");
         Dashboard();Activate();native?.Start();controller?.Start();
         string? controllerStatus=controller?.Status;bool? controllerRegistered=controller?.IsRunning;

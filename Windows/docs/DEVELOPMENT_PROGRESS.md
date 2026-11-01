@@ -1,5 +1,15 @@
 # Development progress and engineering report
 
+## Phase 3 — 2026-11-01
+
+See [PHASE3_REPORT](PHASE3_REPORT.md). Added persistent edge/corner controls,
+visual region editor, Surface Mode, endpoint volume/relative seeking, explicit
+physical zone testing and read-only HID access evidence. Two/three-finger device
+contact delivery and three-finger taps were physically observed locally.
+Individual region/action acceptance remains separate. 115 automated tests pass;
+the self-contained win-x64 release passed eleven-page smoke and preserved backups.
+The earlier phase records below retain their original verification scope.
+
 ## Phase 2 — 2026-11-01
 
 Delivered and validated in [PHASE2_REPORT](PHASE2_REPORT.md): shared glass UI,

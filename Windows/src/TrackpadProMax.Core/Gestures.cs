@@ -10,7 +10,7 @@ public enum Zone { Anywhere, Center, TopLeft, TopRight, BottomLeft, BottomRight,
 public enum GestureKind { Tap, DoubleTap, LongPress, SwipeLeft, SwipeRight, SwipeUp, SwipeDown }
 public sealed record Contact(int Id, PadPoint Position, double? Pressure = null, double? Size = null, double? Angle = null);
 // Positions must be device-relative normalized coordinates, origin top-left. Never cursor coordinates.
-public sealed record TouchFrame(double Time, IReadOnlyList<Contact> Contacts, bool Cancelled = false);
+public sealed record TouchFrame(double Time, IReadOnlyList<Contact> Contacts, bool Cancelled = false, bool Initial = false);
 public sealed record Gesture(GestureKind Kind, int Fingers, Zone Zone, double Time);
 public sealed class GestureSettings
 {

@@ -40,6 +40,7 @@ public sealed class Configuration
     public bool MinimizeToTray { get; set; } = true;
     public string ActiveMode { get; set; } = "Normal";
     public GestureSettings Gestures { get; set; } = new();
+    public SurfaceSettings Surface { get; set; } = new();
     public List<Binding> Bindings { get; set; } = [];
     public List<AppProfile> Profiles { get; set; } = [];
     public List<MenuEntry> Menu { get; set; } = [];
@@ -69,6 +70,8 @@ public sealed class Configuration
         if(Gestures is null || Bindings is null || Profiles is null || Menu is null || ActiveMode is null) throw new ArgumentException("Yapılandırma alanları null olamaz.");
         if(Version!=1) throw new ArgumentException("Desteklenmeyen yapılandırma sürümü.");
         Gestures.Validate();
+        if(Surface is null)throw new ArgumentException("Yüzey ayarları boş olamaz.");
+        Surface.Validate();
         if(Appearance is null) throw new ArgumentException("Görünüm ayarları boş olamaz.");
         Appearance.Validate();
         if(Menu.Count==0 || Menu.Count>12) throw new ArgumentException("Ana menü 1–12 öğe içermeli.");
@@ -105,12 +108,13 @@ public sealed class Configuration
     public static void ValidateAction(ActionSpec a)
     {
         if(a is null || a.Kind is null || a.Value is null)throw new ArgumentException("Eylem alanları null olamaz.");
-        string[] kinds=["wheel","mode","keys","media","window","launch","url","lock","settings","touchpadsettings","taskmanager","brightness"];
+        string[] kinds=["wheel","mode","keys","media","window","launch","url","lock","settings","touchpadsettings","taskmanager","brightness","volume","seek"];
         if(!kinds.Contains(a.Kind)) throw new ArgumentException("Bilinmeyen eylem: "+a.Kind);
         if(a.Kind=="keys") Shortcut.Parse(a.Value);
         if(a.Kind=="media" && !new[]{"play","next","previous","up","down","mute"}.Contains(a.Value))throw new ArgumentException("Bilinmeyen medya eylemi.");
         if(a.Kind=="window" && !new[]{"left","right","maximize","restore","minimize","tile2","tile3","tile4"}.Contains(a.Value))throw new ArgumentException("Bilinmeyen pencere eylemi.");
         if(a.Kind=="brightness" && (!int.TryParse(a.Value,out int brightness) || brightness < -100 || brightness > 100))throw new ArgumentException("Parlaklık farkı -100 ile 100 arasında olmalı.");
+        if(a.Kind is "volume" or "seek" && (!int.TryParse(a.Value,out int delta) || delta < -100 || delta > 100 || delta==0))throw new ArgumentException("Ses (%) / zaman (saniye) farkı -100…100 arasında ve sıfırdan farklı olmalı.");
         if(a.Kind=="url" && (!Uri.TryCreate(a.Value,UriKind.Absolute,out var uri) || (uri.Scheme!="https" && uri.Scheme!="http"))) throw new ArgumentException("Yalnızca http/https adresleri desteklenir.");
         if(a.Kind=="launch" && (string.IsNullOrWhiteSpace(a.Value) || !a.Value.EndsWith(".exe",StringComparison.OrdinalIgnoreCase) || a.Value.Contains('"'))) throw new ArgumentException("Bir .exe yolu belirtin; bağımsız değişken desteklenmez.");
     }

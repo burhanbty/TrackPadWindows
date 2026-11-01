@@ -11,6 +11,7 @@ namespace TrackpadProMax.App;
 public sealed partial class MainWindow
 {
     private readonly LaboratoryJournal journal=new();
+    private readonly LaboratoryJournal recognitionJournal=new();
     private readonly PhysicalTest[] physicalTests=[new("Tek parmak dokunuş · yerel API bu olayı sağlamayabilir",GestureKind.Tap,1),new("İki parmak kaydırma / scroll · temas akışı",null,2,true),new("Üç parmak dokunuş",GestureKind.Tap,3),new("Dört parmak dokunuş",GestureKind.Tap,4),new("Üç parmak sola kaydırma",GestureKind.SwipeLeft,3),new("Dört parmak sağa kaydırma",GestureKind.SwipeRight,4)];
     private readonly DispatcherTimer labTimer=new(){Interval=TimeSpan.FromMilliseconds(120)};
     private ForegroundGestureController? controller;
@@ -30,11 +31,12 @@ public sealed partial class MainWindow
     private void Record(LaboratoryEvent e)
     {
         journal.Add(e);foreach(var test in physicalTests)test.Observe(e);
+        if(e.Contacts is null)recognitionJournal.Add(e);
     }
     private async void OnControllerGesture(Gesture gesture)
     {
         Record(new(DateTimeOffset.Now,EvidenceSource.NativeController,"Yerel çok parmak dokunuşu · koordinat yok",gesture.Fingers,Gesture:gesture.Kind));
-        if(paused || !IsActive || IsLaboratoryVisible || setupVisible)return;
+        if(paused || !IsActive || IsLaboratoryVisible || setupVisible || surfaceActive || zoneTesting)return;
         var binding=config.Resolve(WindowsActions.ProcessName(target),b=>b.UsesNative && b.Gesture==gesture.Kind && b.Fingers==gesture.Fingers && b.Zone==Zone.Anywhere);
         if(binding is not null)await Execute(binding.Action);
     }
@@ -42,8 +44,9 @@ public sealed partial class MainWindow
     {
         nativeWanted=enabled;
         if(enabled){native?.Start();if(IsActive)controller?.Start();}
-        else {controller?.Stop();native?.Stop();nativeRecognizer?.Cancel();lastFrame=null;}
+        else {if(surfaceActive || zoneTesting)StopSurface("Yerel giriş kapatıldı");controller?.Stop();native?.Stop();nativeRecognizer?.Cancel();lastFrame=null;}
         status.Text=(native?.Status??"API hazırlanmadı")+" · "+(controller?.Status??"");
+        Record(new(DateTimeOffset.Now,EvidenceSource.System,$"Giriş oturumu · istek={enabled} · ön plan={IsActive} · WM_POINTER kayıt={native?.IsRunning} · Controller etkin={controller?.IsRunning}"));
     }
     private async void LaboratoryPage()
     {
@@ -59,6 +62,7 @@ public sealed partial class MainWindow
         body.Children.Add(Text("Bir testi başlatın ve belirtilen hareketi fiziksel olarak yapın. Yalnızca eşleşen yerel olay sonucu tamamlar. İki parmak testi temas akışını doğrular; Windows'un scroll çıktısını ölçmez. Tek parmak dokunuşu için kısayol yolu gerekebilir.",12));
         foreach(var test in physicalTests)body.Children.Add(Button("Testi başlat · "+test.Name,()=>{test.Arm();RefreshLaboratory();}));
         testText=Text("");body.Children.Add(testText);
+        body.Children.Add(Button("Özel kenar / köşe test ekranı",ZoneLaboratoryPage));
         body.Children.Add(Text("Olay akışı · en fazla 200 kayıt",19));
         eventText=JsonEditor("");eventText.Height=210;eventText.IsReadOnly=true;body.Children.Add(eventText);
         SimulationPanel();
@@ -71,10 +75,12 @@ public sealed partial class MainWindow
         if(!IsLaboratoryVisible)return;
         string devices=report is null?"Taranıyor…":string.Join(", ",report.Devices.Where(d=>d.Name.Contains("touchpad",StringComparison.OrdinalIgnoreCase)||d.Name.Contains("dokunmatik",StringComparison.OrdinalIgnoreCase)).Select(d=>d.Name));
         providerText!.Text=$"{report?.Model??"Donanım taranıyor"} · {devices}\nEtkin sağlayıcı: {(native?.IsRunning==true?"WM_POINTER ön plan":"Genel kısayollar")} / {(controller?.IsRunning==true?"3–4 parmak denetleyicisi etkin":"denetleyici kapalı")}\n{native?.Status}\n{controller?.Status}\nAPI varlığı: {native?.IsAvailable} · alınan yerel çerçeve: {native?.ReceivedFrames??0} · okuma hatası: {native?.ReadErrors??0}\nBasınç ve haptik: doğrulanmadı. Küresel ham temas erişimi: desteklenmiyor.";
-        testText!.Text=string.Join("\n",physicalTests.Select(t=>$"{t.Name}: {t.Status}"));
+        if(contactCanvas is null && surfaceMap is not null)providerText.Text=$"{report?.Model??"Donanım taranıyor"} · yalnızca ön plan · {(zoneTesting?(zoneActions?"GERÇEK EYLEMLER AÇIK":"ÖNİZLEME · eylemler kapalı"):"TEST KAPALI")}\nKayıt: WM_POINTER={native?.IsRunning} / Controller={controller?.IsRunning} · API varlığı fiziksel teslim değildir\nOlay: WM_POINTER={native?.WmPointerMessages??0} / Controller={native?.ControllerCallbacks??0} · koordinatlı çerçeve={native?.PositionFrames??0} · okuma hatası={native?.ReadErrors??0}\nTek parmak / konumlu dokunuş yok. Arka planda ham temas erişimi yok.";
+        if(testText is not null)testText.Text=string.Join("\n",physicalTests.Select(t=>$"{t.Name}: {t.Status}"));
         string logs=string.Join("\n",journal.Events.Reverse().Select(e=>$"{e.At:HH:mm:ss.fff} [{SourceLabel(e.Source)}] {e.Detail}"+(e.Fingers.HasValue?$" · {e.Fingers} parmak":"")+(e.Contacts is {Count:>0}?" · "+string.Join("; ",e.Contacts.Select(c=>$"#{c.Id} ({c.Position.X:F3}, {c.Position.Y:F3})")):"")));
-        if(eventText!.Text!=logs)eventText.Text=logs;
-        contactCanvas!.Children.Clear();
+        if(eventText is not null && eventText.Text!=logs)eventText.Text=logs;
+        if(contactCanvas is null)return;
+        contactCanvas.Children.Clear();
         if(lastFrame is {Cancelled:false} frame)
         {
             // Stale observations are retained in the log, not presented as live contacts.
@@ -96,7 +102,7 @@ public sealed partial class MainWindow
         if(dialog.ShowDialog()!=true)return;
         try
         {
-            var payload=new{At=DateTimeOffset.Now,Hardware=report,NativeProvider=native?.Status,Controller=controller?.Status,Backdrop=backdropStatus,NativeFrames=native?.ReceivedFrames,ReadErrors=native?.ReadErrors,PhysicalTests=physicalTests.Select(t=>new{t.Name,t.Status}),ShortcutUserConfirmations=shortcutEvidence,Events=journal.Events,Limitations="API registration is not physical verification. Shortcut source cannot prove finger count or coordinates. No pressure/haptics measured."};
+            var payload=new{At=DateTimeOffset.Now,Hardware=report,NativeProvider=native?.Status,Controller=controller?.Status,Backdrop=backdropStatus,NativeFrames=native?.ReceivedFrames,ReadErrors=native?.ReadErrors,WmPointerMessages=native?.WmPointerMessages,ControllerCallbacks=native?.ControllerCallbacks,PositionFrames=native?.PositionFrames,RejectedCoordinateFrames=native?.RejectedCoordinateFrames,SurfaceSettings=config.Surface,PhysicalZoneTests=zoneTests.Select(t=>new{t.Zone,t.Status}),SurfaceActionResult=surfaceResult,PhysicalTests=physicalTests.Select(t=>new{t.Name,t.Status}),ShortcutUserConfirmations=shortcutEvidence,RecognitionEvents=recognitionJournal.Events,Events=journal.Events,Limitations="API registration is not physical verification. Zone recognition is not action-effect verification. Shortcut source cannot prove finger count or coordinates. No pressure/haptics measured."};
             File.WriteAllText(dialog.FileName,JsonSerializer.Serialize(payload,ConfigurationStore.Options));status.Text="Laboratuvar raporu yerel dosyaya kaydedildi.";
         }catch(Exception ex){status.Text="Dışa aktarılamadı: "+ex.Message;}
     }

@@ -24,7 +24,7 @@ public sealed partial class MainWindow
         var presets=new ComboBox{MinWidth=200};
         void Presets()
         {
-            presets.ItemsSource=(string)kind.SelectedItem switch{"media"=>new[]{"play","next","previous","up","down","mute"},"window"=>new[]{"left","right","maximize","restore","minimize","tile2","tile3","tile4"},"mode"=>new[]{"Normal","Media","Control","Windows","Applications","Quick Settings"},"brightness"=>new[]{"10","-10"},_=>Array.Empty<string>()};
+            presets.ItemsSource=(string)kind.SelectedItem switch{"media"=>new[]{"play","next","previous","up","down","mute"},"window"=>new[]{"left","right","maximize","restore","minimize","tile2","tile3","tile4"},"mode"=>new[]{"Normal","Surface","Media","Control","Windows","Applications","Quick Settings"},"brightness"=>new[]{"10","-10"},_=>Array.Empty<string>()};
             presets.SelectedIndex=presets.Items.Count>0?0:-1;value.Text=presets.SelectedItem as string??"";
         }
         kind.SelectionChanged+=(_,_)=>Presets();presets.SelectionChanged+=(_,_)=>{if(presets.SelectedItem is string text)value.Text=text;};Presets();
